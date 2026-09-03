@@ -63,8 +63,8 @@ function validateInput(raw: ReturnType<typeof parseInput>) {
     errors.price = "Indiquez un prix valide (supérieur à 0).";
 
   if (!raw.imageUrl) errors.imageUrl = "L'URL de l'image est obligatoire.";
-  else if (!/^https?:\/\//i.test(raw.imageUrl))
-    errors.imageUrl = "L'URL doit commencer par http(s)://";
+  else if (!/^(\/api\/images\/\d+|https?:\/\/)/i.test(raw.imageUrl))
+    errors.imageUrl = "L'URL doit être une photo stockée (/api/images/…) ou commencer par http(s)://";
 
   if (!OK_TYPES.has(raw.type)) errors.type = "Type de bien invalide.";
   if (raw.status !== "Vente" && raw.status !== "Location")
@@ -157,6 +157,10 @@ export async function updateProperty(
     };
   }
 
+  // Une image de type /api/images/… provient de la couverture calculée :
+  // on la conserve telle quelle en base (aucune écriture superflue).
+  const isStoredCover = /^\/api\/images\/\d+$/.test(raw.imageUrl);
+
   try {
     const result = await db
       .update(properties)
@@ -166,7 +170,7 @@ export async function updateProperty(
         price: priceNum.toFixed(2),
         city: raw.city || "Tanger",
         district: raw.district,
-        imageUrl: raw.imageUrl,
+        ...(isStoredCover ? {} : { imageUrl: raw.imageUrl }),
         type: raw.type as PropertyType,
         status: raw.status as "Vente" | "Location",
         bedrooms,

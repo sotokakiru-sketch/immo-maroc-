@@ -53,3 +53,19 @@ export const users = pgTable("users", {
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+
+/**
+ * Photos des annonces, telles qu'elles existent en base (aucune donnée
+ * n'a été modifiée/supprimée). Chaque ligne stocke une photo encodée en
+ * base64 (data URL) ; la couche applicative les expose via /api/images/:id
+ * et utilise la position 0 comme visuel de couverture quand image_url est vide.
+ */
+export const propertyImages = pgTable("property_images", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  position: integer("position").notNull(),
+  data: text("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type PropertyImage = typeof propertyImages.$inferSelect;

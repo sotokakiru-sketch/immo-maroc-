@@ -49,6 +49,14 @@ export const AGENCY = {
 /** Taux de change indicatif MAD → EUR (pour l'affichage dual DH/€). */
 export const EUR_RATE = 10.8;
 
+/**
+ * URL publique d'une photo stockée en base (table property_images).
+ * La route /api/images/[id] décode le JPEG sans rien modifier.
+ */
+export function propertyImageUrl(imageId: number): string {
+  return `/api/images/${imageId}`;
+}
+
 /** Vidéo de fond : phare du Cap Spartel à Tanger. */
 export const HERO_VIDEO_URL =
   "https://videos.pexels.com/video-files/34726243/14720615_3840_2160_60fps.mp4";

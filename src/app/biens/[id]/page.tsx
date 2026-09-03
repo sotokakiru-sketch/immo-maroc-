@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import {
   BedDouble,
@@ -15,6 +14,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import PropertyCard from "@/components/PropertyCard";
+import PropertyGallery from "@/components/PropertyGallery";
 import { formatPrice, formatPriceEuro, AGENCY } from "@/lib/constants";
 import { getPropertyById, getRelatedProperties } from "@/lib/data";
 
@@ -64,15 +64,12 @@ export default async function PropertyDetailPage({
 
   return (
     <article>
-      {/* Image héro */}
+      {/* Image héro + galerie photos */}
       <section className="relative h-[60vh] min-h-[420px] w-full overflow-hidden">
-        <Image
-          src={property.imageUrl}
-          alt={property.title}
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover"
+        <PropertyGallery
+          imageIds={property.galleryImageIds ?? []}
+          fallbackSrc={property.imageUrl}
+          title={property.title}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-brand-950 via-brand-950/40 to-brand-950/30" />
         <div className="container-x absolute inset-x-0 bottom-0 pb-10">
