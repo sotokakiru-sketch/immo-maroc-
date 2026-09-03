@@ -1,0 +1,13 @@
+# =============================================================================
+# Configuration Netlify — Immo Maroc (Next.js 16 App Router)
+# =============================================================================
+# Le Netlify Next.js Runtime est auto-détecté : pas besoin de plugin ni de
+# règles de redirection manuelles. Le runtime gère nativement :
+#   - Pages + routes dynamiques (/biens/[id])
+#   - API routes (/api/health)
+#   - Server Actions (CRUD, auth)
+#   - Middleware Edge (protection /admin, /mon-compte)
+# =============================================================================
+
+[build]
+  command = "npm run build"

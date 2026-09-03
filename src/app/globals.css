@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------------
+   DarFind — Design System
+   Palette : émeraude profond (brand) + or champagne (gold) + ivoire (sand)
+----------------------------------------------------------------------------- */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
+
+  /* Brand — vert émeraude profond */
+  --color-brand-50: #ecf6f1;
+  --color-brand-100: #cfe9de;
+  --color-brand-200: #a3d2bf;
+  --color-brand-300: #6fb499;
+  --color-brand-400: #3d9071;
+  --color-brand-500: #1f7255;
+  --color-brand-600: #155a44;
+  --color-brand-700: #0f4434;
+  --color-brand-800: #0b3328;
+  --color-brand-900: #08251e;
+  --color-brand-950: #041511;
+
+  /* Gold — or champagne */
+  --color-gold-300: #e4cf97;
+  --color-gold-400: #d4b878;
+  --color-gold-500: #c2a05f;
+  --color-gold-600: #a3854a;
+  --color-gold-700: #806739;
+
+  /* Sand — ivoire / sable chaud */
+  --color-sand-50: #faf8f3;
+  --color-sand-100: #f4efe5;
+  --color-sand-200: #e9dfcd;
+  --color-sand-300: #d9c9ab;
+  --color-sand-400: #bda57e;
+  --color-sand-500: #a08760;
+
+  --shadow-soft: 0 10px 40px -12px rgba(8, 37, 30, 0.18);
+  --shadow-luxe: 0 24px 60px -20px rgba(8, 37, 30, 0.35);
+
+  --animate-fade-up: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade-in: fade-in 1s ease both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-sand-50);
+    color: var(--color-brand-950);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--color-gold-400);
+    color: var(--color-brand-950);
+  }
+
+  /* Scrollbar raffinée */
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-sand-100);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-brand-200);
+    border-radius: 999px;
+    border: 3px solid var(--color-sand-100);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-brand-300);
+  }
+}
+
+@layer components {
+  /* Conteneur largeur fixe */
+  .container-x {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  /* Boutons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.01em;
+    transition: all 0.25s ease;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background-color: var(--color-brand-700);
+    color: #fff;
+    padding: 0.8rem 1.6rem;
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-primary:hover {
+    background-color: var(--color-brand-800);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-luxe);
+  }
+  .btn-gold {
+    background-color: var(--color-gold-500);
+    color: var(--color-brand-950);
+    padding: 0.8rem 1.6rem;
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-gold:hover {
+    background-color: var(--color-gold-400);
+    transform: translateY(-2px);
+  }
+  .btn-ghost {
+    border: 1px solid color-mix(in oklab, var(--color-brand-700) 25%, transparent);
+    color: var(--color-brand-800);
+    padding: 0.8rem 1.6rem;
+  }
+  .btn-ghost:hover {
+    background-color: var(--color-brand-50);
+  }
+
+  /* Étiquette de section */
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--color-gold-600);
+  }
+
+  /* Inputs formulaires */
+  .field-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-brand-800);
+    margin-bottom: 0.4rem;
+  }
+  .field-input {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-sand-300);
+    background: #fff;
+    padding: 0.7rem 0.9rem;
+    font-size: 0.95rem;
+    color: var(--color-brand-950);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .field-input::placeholder {
+    color: color-mix(in oklab, var(--color-sand-500) 70%, transparent);
+  }
+  .field-input:focus {
+    outline: none;
+    border-color: var(--color-brand-500);
+    box-shadow: 0 0 0 4px var(--color-brand-100);
+  }
+}
