@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Menu, X, Phone, MapPin, Star, LogIn, User } from "lucide-react";
 import { AGENCY } from "@/lib/constants";
 import { logoutAction } from "@/lib/auth-actions";
-import type { SessionUser } from "@/lib/auth";
+import type { SessionUser } from "@/lib/auth-constants";
 import Logo from "@/components/Logo";
 import AccountMenu from "@/components/AccountMenu";
 

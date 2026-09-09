@@ -2,20 +2,18 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { users, type User } from "@/db/schema";
-import { setSession, clearSession } from "@/lib/session";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { createClient } from "@/lib/supabase/server";
+import { isAdminEmail } from "@/lib/auth-constants";
+import { clearSession } from "@/lib/session";
 
 export type AuthState = { ok: boolean; message: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Crée un compte CLIENT unique (l'inscription publique ne permet JAMAIS de
- * devenir administrateur). Les comptes admin sont créés exclusivement via un
- * script serveur (seed-admin.mjs) ou directement en base.
+ * Crée un compte CLIENT via Supabase Auth (l'inscription publique ne permet
+ * JAMAIS de devenir administrateur : le rôle admin est réservé aux e-mails
+ * listés dans ADMIN_EMAILS). Aucun compte existant n'est modifié.
  */
 export async function signupAction(
   _prev: AuthState | null,
@@ -25,9 +23,6 @@ export async function signupAction(
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
-
-  // Sécurité : on force toujours le rôle "client", peu importe ce qui est envoyé.
-  const role = "client";
 
   if (!name) return { ok: false, message: "Le nom est obligatoire." };
   if (!EMAIL_RE.test(email))
@@ -40,28 +35,45 @@ export async function signupAction(
   if (password !== confirm)
     return { ok: false, message: "Les mots de passe ne correspondent pas." };
 
-  const [existing] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, email));
-  if (existing)
-    return { ok: false, message: "Un compte existe déjà avec cet e-mail." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { name, role: "client" } },
+  });
 
-  const [user] = await db
-    .insert(users)
-    .values({ name, email, passwordHash: hashPassword(password), role })
-    .returning({ id: users.id, email: users.email });
-
-  if (!user) {
-    return { ok: false, message: "Impossible de créer le compte." };
+  if (error) {
+    console.error("[DarFind] signupAction — Supabase Auth :", error.message);
+    const isDuplicate =
+      error.code === "user_already_exists" ||
+      error.message.toLowerCase().includes("already registered");
+    return {
+      ok: false,
+      message: isDuplicate
+        ? "Un compte existe déjà avec cet e-mail."
+        : `Inscription impossible : ${error.message}`,
+    };
   }
 
-  await setSession({ userId: user.id, email: user.email, role });
+  // Si la confirmation par e-mail est activée, aucune session n'est créée :
+  // on invite l'utilisateur à confirmer son adresse avant de se connecter.
+  if (!data.session) {
+    return {
+      ok: true,
+      message:
+        "Compte créé ! Confirmez votre adresse e-mail, puis connectez-vous.",
+    };
+  }
+
   revalidatePath("/", "layout");
   redirect("/mon-compte");
 }
 
-/** Authentifie un utilisateur existant (admin ou client). */
+/**
+ * Authentifie un utilisateur existant (admin ou client) via
+ * supabase.auth.signInWithPassword(). L'erreur réelle de Supabase Auth est
+ * renvoyée au formulaire (plus de message générique masquant la cause).
+ */
 export async function loginAction(
   _prev: AuthState | null,
   formData: FormData,
@@ -72,41 +84,31 @@ export async function loginAction(
   if (!email || !password)
     return { ok: false, message: "Veuillez remplir tous les champs." };
 
-  // Recherche de l'utilisateur — protégée contre les erreurs de base.
-  let user: User | null = null;
-  try {
-    const rows = await db.select().from(users).where(eq(users.email, email));
-    user = rows[0] ?? null;
-  } catch (err) {
-    console.error("[DarFind] loginAction — échec de lecture de la base :", err);
-    return {
-      ok: false,
-      message: "Connexion impossible pour le moment, réessayez dans un instant.",
-    };
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    console.error("[DarFind] loginAction — Supabase Auth :", error.message);
+    const msg = error.message.toLowerCase();
+    if (msg.includes("invalid login credentials"))
+      return { ok: false, message: "E-mail ou mot de passe incorrect." };
+    if (msg.includes("email not confirmed"))
+      return {
+        ok: false,
+        message: "Votre adresse e-mail n'a pas encore été confirmée.",
+      };
+    // Erreur réelle Supabase Auth, affichée telle quelle (diagnostic).
+    return { ok: false, message: `Connexion impossible : ${error.message}` };
   }
 
-  // Même message en cas d'utilisateur ou de mot de passe invalide (anti-énumération).
-  if (!user || !verifyPassword(password, user.passwordHash)) {
-    return { ok: false, message: "E-mail ou mot de passe incorrect." };
-  }
-
-  // Création de la session — protégée contre une écriture de cookie impossible.
-  try {
-    await setSession({
-      userId: user.id,
-      email: user.email,
-      role: user.role ?? "client",
-    });
-  } catch (err) {
-    console.error("[DarFind] loginAction — erreur inattendue :", err);
-    return {
-      ok: false,
-      message: "Connexion impossible pour le moment, réessayez dans un instant.",
-    };
-  }
+  const role =
+    data.user?.email && isAdminEmail(data.user.email) ? "admin" : "client";
 
   revalidatePath("/", "layout");
-  redirect(user.role === "admin" ? "/admin" : "/mon-compte");
+  redirect(role === "admin" ? "/admin" : "/mon-compte");
 }
 
 /** Déconnecte l'utilisateur. */

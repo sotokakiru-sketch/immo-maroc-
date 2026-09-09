@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE_NAME } from "@/lib/auth-constants";
+import { updateSession } from "@/lib/supabase/middleware";
 
 const LOGIN_PATH = "/login";
 
@@ -8,38 +8,39 @@ const PUBLIC_PATHS = new Set(["/login", "/signup"]);
 
 /**
  * Protège les espaces privés au niveau du routeur :
- * - /login & /signup : accessibles à tous.
+ * - /login & /signup : accessibles à tous (redirection si déjà connecté) ;
  * - /admin/* et /mon-compte : redirigent vers /login si pas de session.
  *
- * Le middleware vérifie la présence du cookie ; la vérification cryptographique
- * du token ET du rôle est réalisée côté serveur (server components / actions),
- * c'est la véritable barrière de sécurité (défense en profondeur).
+ * La session est vérifiée cryptographiquement via Supabase Auth (getUser) ;
+ * la vérification du rôle admin est réalisée côté serveur (server components
+ * / actions), c'est la véritable barrière de sécurité (défense en profondeur).
  */
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
+  const { supabaseResponse, user } = await updateSession(req);
   const { pathname } = req.nextUrl;
-  const hasSession = Boolean(req.cookies.get(COOKIE_NAME)?.value);
+  const loggedIn = Boolean(user);
 
   // Pages d'auth : redirige vers l'accueil si déjà connecté.
   if (PUBLIC_PATHS.has(pathname)) {
-    if (hasSession) {
+    if (loggedIn) {
       return NextResponse.redirect(new URL("/", req.url));
     }
-    return NextResponse.next();
+    return supabaseResponse;
   }
 
-  // Routes protégées nécessitant une session.
+  // Routes protégées nécessitant une session valide.
   const isProtected =
     pathname === "/admin" ||
     pathname.startsWith("/admin/") ||
     pathname === "/mon-compte";
 
-  if (isProtected && !hasSession) {
+  if (isProtected && !loggedIn) {
     const url = new URL(LOGIN_PATH, req.url);
     url.searchParams.set("from", pathname);
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return supabaseResponse;
 }
 
 export const config = {

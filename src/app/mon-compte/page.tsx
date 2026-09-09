@@ -12,9 +12,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { AGENCY } from "@/lib/constants";
 import { getAllProperties } from "@/lib/data";
 
@@ -29,13 +26,9 @@ export default async function MonComptePage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const [profile] = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, session.userId));
-
+  const name = session.name ?? session.email.split("@")[0];
   const recent = (await getAllProperties()).slice(0, 3);
-  const initials = (profile?.name ?? "U")
+  const initials = name
     .split(" ")
     .map((p) => p[0])
     .slice(0, 2)
@@ -56,7 +49,7 @@ export default async function MonComptePage() {
               Espace personnel
             </span>
             <h1 className="mt-1 font-display text-2xl font-bold text-brand-900 sm:text-3xl">
-              Bonjour, {profile?.name?.split(" ")[0] ?? "cher client"} 👋
+              Bonjour, {name.split(" ")[0]} 👋
             </h1>
             <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-brand-500">
               <span className="flex items-center gap-1.5">

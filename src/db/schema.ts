@@ -37,22 +37,10 @@ export type PropertyType =
   | "Maison";
 
 /**
- * Comptes administrateurs (espace /admin).
- * Les mots de passe sont stockés hachés (scrypt) — jamais en clair.
+ * NB : l'authentification passe désormais par Supabase Auth (table auth.users
+ * gérée par Supabase). Il n'y a plus de table users côté app : le rôle
+ * admin/client est dérivé de l'e-mail (voir src/lib/auth-constants.ts).
  */
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  role: text("role").$type<"admin" | "client">().notNull().default("client"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
 
 /**
  * Photos des annonces, telles qu'elles existent en base (aucune donnée

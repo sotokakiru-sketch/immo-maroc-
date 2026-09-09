@@ -208,6 +208,15 @@ export default async function PropertyDetailPage({
                 <MessageCircle className="h-4 w-4" />
                 Contacter sur WhatsApp
               </a>
+              <a
+                href={AGENCY.whatsapp2}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-ghost mt-3 w-full"
+              >
+                <MessageCircle className="h-4 w-4" />
+                WhatsApp · {AGENCY.phoneDisplay2}
+              </a>
               <a href={`mailto:${AGENCY.email}`} className="btn btn-ghost mt-3 w-full">
                 <Calendar className="h-4 w-4" />
                 Demander une visite

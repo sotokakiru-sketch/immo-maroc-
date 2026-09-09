@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 import FloatingWhatsApp from "@/components/FloatingWhatsApp";
 import { ToastProvider } from "@/components/Toast";
 import { getSession } from "@/lib/session";
-import type { SessionUser } from "@/lib/auth";
+import type { SessionUser } from "@/lib/auth-constants";
 
 const inter = Inter({
   subsets: ["latin"],

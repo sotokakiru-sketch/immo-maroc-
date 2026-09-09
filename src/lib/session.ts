@@ -1,44 +1,34 @@
-import { cookies, headers } from "next/headers";
-import {
-  COOKIE_NAME,
-  MAX_AGE_SECONDS,
-  createSessionToken,
-  verifySessionToken,
-  type SessionUser,
-} from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { isAdminEmail, type SessionUser } from "@/lib/auth-constants";
 
 export type Session = SessionUser | null;
 
 /** Lit et vérifie la session courante (côté serveur). */
 export async function getSession(): Promise<Session> {
-  const store = await cookies();
-  const token = store.get(COOKIE_NAME)?.value;
-  return verifySessionToken(token);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) return null;
+
+  const meta = user.user_metadata as Record<string, unknown> | undefined;
+  const name = typeof meta?.name === "string" ? meta.name : undefined;
+
+  return {
+    userId: user.id,
+    email: user.email,
+    role: isAdminEmail(user.email) ? "admin" : "client",
+    ...(name ? { name } : {}),
+  };
 }
 
-/** Indique si l'utilisateur dispose d'une session valide (admin ou client). */
+/** Indique si l'utilisateur dispose d'une session valide. */
 export async function isAuthenticated(): Promise<boolean> {
   return (await getSession()) !== null;
 }
 
-/** Démarre une session (cookie HTTP-only signé). */
-export async function setSession(user: SessionUser): Promise<void> {
-  // `secure` est adaptatif : actif en HTTPS (production), désactivé en HTTP,
-  // pour rester fonctionnel en local tout en sécurisant le déploiement.
-  const h = await headers();
-  const isHttps = h.get("x-forwarded-proto") === "https";
-  const store = await cookies();
-  store.set(COOKIE_NAME, createSessionToken(user), {
-    httpOnly: true,
-    secure: isHttps,
-    sameSite: "lax",
-    path: "/",
-    maxAge: MAX_AGE_SECONDS,
-  });
-}
-
-/** Détruit la session admin. */
+/** Déconnecte l'utilisateur (détruit les cookies de session Supabase). */
 export async function clearSession(): Promise<void> {
-  const store = await cookies();
-  store.delete(COOKIE_NAME);
+  const supabase = await createClient();
+  await supabase.auth.signOut();
 }

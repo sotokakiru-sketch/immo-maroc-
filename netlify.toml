@@ -1,13 +1,31 @@
 # =============================================================================
 # Configuration Netlify — Immo Maroc (Next.js 16 App Router)
 # =============================================================================
-# Le Netlify Next.js Runtime est auto-détecté : pas besoin de plugin ni de
-# règles de redirection manuelles. Le runtime gère nativement :
-#   - Pages + routes dynamiques (/biens/[id])
-#   - API routes (/api/health)
-#   - Server Actions (CRUD, auth)
-#   - Middleware Edge (protection /admin, /mon-compte)
+# Next.js 16 build en Turbopack par défaut, mais le runtime Netlify
+# (@netlify/plugin-nextjs / OpenNext) ne sait pas bundler le middleware
+# compilé par Turbopack (erreur "Cannot find module './chunks/[turbopack]_runtime.js'").
+# On force donc webpack pour le build Netlify (le build local reste inchangé).
 # =============================================================================
 
 [build]
   command = "next build --webpack"
+
+# Node.js version utilisée pour le build (Next.js 16 requiert >= 20).
+[build.environment]
+  NODE_VERSION = "22"
+
+# Plugin officiel Next.js pour Netlify : Server Actions, Middleware Edge,
+# rendu dynamique et fonctions serveur. Installé en devDependency pour
+# garantir la compatibilité avec Next.js 16.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Variables d'environnement (à configurer dans le dashboard Netlify :
+# Site configuration → Environment variables). Les NEXT_PUBLIC_* sont
+# embarquées à la compilation ; DATABASE_URL et SUPABASE_SERVICE_ROLE_KEY
+# restent côté serveur.
+#
+# NEXT_PUBLIC_SUPABASE_URL=https://snhmawfhrysozqqlvqli.supabase.co
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...
+# SUPABASE_SERVICE_ROLE_KEY=sb_secret_...
+# DATABASE_URL=postgresql://postgres.snhmawfhrysozqqlvqli:...@aws-0-eu-north-1.pooler.supabase.com:6543/postgres

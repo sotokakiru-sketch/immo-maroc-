@@ -35,7 +35,7 @@ export default function LoginForm() {
             autoComplete="email"
             required
             className="field-input pl-11"
-            placeholder="admin@immomaroc.ma"
+            placeholder="immomaroc.org@gmail.com"
           />
         </div>
       </div>

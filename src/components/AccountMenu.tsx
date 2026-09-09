@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { ChevronDown, User, LogOut, LayoutGrid, ShieldCheck } from "lucide-react";
 import { logoutAction } from "@/lib/auth-actions";
-import type { SessionUser } from "@/lib/auth";
+import type { SessionUser } from "@/lib/auth-constants";
 
 /** Avatar + menu déroulant du compte connecté (desktop). */
 export default function AccountMenu({ session }: { session: SessionUser }) {
