@@ -1,10 +1,10 @@
 "use server";
 
 import { db } from "@/db";
-import { properties } from "@/db/schema";
+import { properties, propertyImages } from "@/db/schema";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PropertyType } from "@/db/schema";
 import { PROPERTY_TYPES } from "@/lib/constants";
 import { getSession } from "@/lib/session";
@@ -33,6 +33,37 @@ async function requireAdmin() {
   return session;
 }
 
+/**
+ * Photo principale : le client sélectionne une image depuis la galerie ou les
+ * fichiers de l'appareil (input type=file). Le fichier est encodé en data URL
+ * base64 puis enregistré dans la table property_images — le stockage existant
+ * des photos, servi ensuite via /api/images/:id. Aucune photo existante n'est
+ * modifiée ni supprimée.
+ */
+const PHOTO_MAX_BYTES = 4 * 1024 * 1024; // 4 Mo après encodage (limite Server Action)
+
+async function encodePhoto(formData: FormData): Promise<string | null> {
+  const photo = formData.get("photo");
+  if (!(photo instanceof File) || photo.size === 0) return null;
+
+  if (!photo.type.startsWith("image/")) {
+    throw new ValidationError("Le fichier sélectionné n'est pas une image.");
+  }
+  if (photo.size > PHOTO_MAX_BYTES) {
+    throw new ValidationError("Photo trop volumineuse (4 Mo maximum).");
+  }
+
+  const buffer = Buffer.from(await photo.arrayBuffer());
+  const dataUrl = `data:${photo.type};base64,${buffer.toString("base64")}`;
+  if (dataUrl.length > PHOTO_MAX_BYTES) {
+    throw new ValidationError("Photo trop volumineuse (4 Mo maximum).");
+  }
+  return dataUrl;
+}
+
+/** Erreur de validation de la photo, interceptée pour afficher le message. */
+class ValidationError extends Error {}
+
 /** Extrait et normalise les champs du formulaire. */
 function parseInput(formData: FormData) {
   return {
@@ -41,7 +72,6 @@ function parseInput(formData: FormData) {
     price: String(formData.get("price") ?? "").trim(),
     city: String(formData.get("city") ?? "Tanger").trim(),
     district: String(formData.get("district") ?? "").trim(),
-    imageUrl: String(formData.get("imageUrl") ?? "").trim(),
     type: String(formData.get("type") ?? "Appartement"),
     status: String(formData.get("status") ?? "Vente"),
     bedrooms: String(formData.get("bedrooms") ?? "0"),
@@ -51,7 +81,7 @@ function parseInput(formData: FormData) {
   };
 }
 
-/** Valide les champs extraits et renvoie erreurs + valeurs typées. */
+/** Valide les champs extraits et renvoie erreurs + valeurs numériques. */
 function validateInput(raw: ReturnType<typeof parseInput>) {
   const errors: Record<string, string> = {};
   if (!raw.title) errors.title = "Le titre est obligatoire.";
@@ -61,10 +91,6 @@ function validateInput(raw: ReturnType<typeof parseInput>) {
   const priceNum = Number(raw.price);
   if (!raw.price || Number.isNaN(priceNum) || priceNum <= 0)
     errors.price = "Indiquez un prix valide (supérieur à 0).";
-
-  if (!raw.imageUrl) errors.imageUrl = "L'URL de l'image est obligatoire.";
-  else if (!/^(\/api\/images\/\d+|https?:\/\/)/i.test(raw.imageUrl))
-    errors.imageUrl = "L'URL doit être une photo stockée (/api/images/…) ou commencer par http(s)://";
 
   if (!OK_TYPES.has(raw.type)) errors.type = "Type de bien invalide.";
   if (raw.status !== "Vente" && raw.status !== "Location")
@@ -82,6 +108,21 @@ function validateInput(raw: ReturnType<typeof parseInput>) {
   return { errors, bedrooms, bathrooms, area, priceNum };
 }
 
+/**
+ * Enregistre une photo dans property_images en position 0 (couverture).
+ * Les photos existantes sont décalées d'une position, jamais modifiées ni
+ * supprimées — la première reste visible dans la galerie.
+ */
+async function savePhoto(propertyId: number, dataUrl: string) {
+  await db
+    .update(propertyImages)
+    .set({ position: sql`${propertyImages.position} + 1` })
+    .where(eq(propertyImages.propertyId, propertyId));
+  await db
+    .insert(propertyImages)
+    .values({ propertyId, position: 0, data: dataUrl });
+}
+
 /** Crée une nouvelle annonce (admin uniquement). */
 export async function createProperty(
   _prev: FormState | null,
@@ -89,9 +130,22 @@ export async function createProperty(
 ): Promise<FormState> {
   await requireAdmin();
 
+  let photoDataUrl: string | null;
+  try {
+    photoDataUrl = await encodePhoto(formData);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return { ok: false, message: err.message, errors: { photo: err.message } };
+    }
+    throw err;
+  }
+
   const raw = parseInput(formData);
   const { errors, bedrooms, bathrooms, area, priceNum } = validateInput(raw);
 
+  if (!photoDataUrl && !errors.photo) {
+    errors.photo = "Sélectionnez une photo depuis votre appareil.";
+  }
   if (Object.keys(errors).length > 0) {
     return {
       ok: false,
@@ -102,20 +156,27 @@ export async function createProperty(
   }
 
   try {
-    await db.insert(properties).values({
-      title: raw.title,
-      description: raw.description,
-      price: priceNum.toFixed(2),
-      city: raw.city || "Tanger",
-      district: raw.district,
-      imageUrl: raw.imageUrl,
-      type: raw.type as PropertyType,
-      status: raw.status as "Vente" | "Location",
-      bedrooms,
-      bathrooms,
-      area,
-      featured: raw.featured === "on",
-    });
+    const [created] = await db
+      .insert(properties)
+      .values({
+        title: raw.title,
+        description: raw.description,
+        price: priceNum.toFixed(2),
+        city: raw.city || "Tanger",
+        district: raw.district,
+        imageUrl: "",
+        type: raw.type as PropertyType,
+        status: raw.status as "Vente" | "Location",
+        bedrooms,
+        bathrooms,
+        area,
+        featured: raw.featured === "on",
+      })
+      .returning({ id: properties.id });
+
+    if (photoDataUrl) {
+      await savePhoto(created.id, photoDataUrl);
+    }
 
     revalidatePath("/");
     revalidatePath("/biens");
@@ -157,9 +218,18 @@ export async function updateProperty(
     };
   }
 
-  // Une image de type /api/images/… provient de la couverture calculée :
-  // on la conserve telle quelle en base (aucune écriture superflue).
-  const isStoredCover = /^\/api\/images\/\d+$/.test(raw.imageUrl);
+  // Une nouvelle photo sélectionnée est ajoutée au stockage existant
+  // (table property_images). Sans nouvelle photo, image_url et les photos
+  // déjà enregistrées sont conservées telles quelles.
+  let photoDataUrl: string | null;
+  try {
+    photoDataUrl = await encodePhoto(formData);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return { ok: false, message: err.message, errors: { photo: err.message } };
+    }
+    throw err;
+  }
 
   try {
     const result = await db
@@ -170,7 +240,6 @@ export async function updateProperty(
         price: priceNum.toFixed(2),
         city: raw.city || "Tanger",
         district: raw.district,
-        ...(isStoredCover ? {} : { imageUrl: raw.imageUrl }),
         type: raw.type as PropertyType,
         status: raw.status as "Vente" | "Location",
         bedrooms,
@@ -182,6 +251,10 @@ export async function updateProperty(
 
     if (result.rowCount === 0) {
       return { ok: false, message: "Annonce introuvable." };
+    }
+
+    if (photoDataUrl) {
+      await savePhoto(id, photoDataUrl);
     }
 
     revalidatePath("/");

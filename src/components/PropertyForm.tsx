@@ -5,7 +5,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  ImageIcon,
+  ImageUp,
   Pencil,
   Plus,
 } from "lucide-react";
@@ -225,22 +225,30 @@ export default function PropertyForm({ property }: PropertyFormProps) {
           <FieldError>{errors?.bathrooms}</FieldError>
         </div>
 
-        {/* Image */}
+        {/* Photo principale : sélection directe depuis la galerie ou les fichiers de l'appareil.
+            Le fichier est transmis au formulaire et enregistré avec l'annonce. */}
         <div className="sm:col-span-2">
-          <label className="field-label" htmlFor="imageUrl">
-            URL de la photo principale *
+          <label className="field-label" htmlFor="photo">
+            Photo principale *
           </label>
           <div className="relative">
-            <ImageIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-brand-300" />
             <input
-              id="imageUrl"
-              name="imageUrl"
-              defaultValue={v?.imageUrl ?? property?.imageUrl}
-              className="field-input pl-11"
-              placeholder="https://…"
+              id="photo"
+              name="photo"
+              type="file"
+              required={!editing}
+              accept="image/*"
+              className="field-input cursor-pointer pr-10 file:mr-4 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
+              aria-describedby="photo-hint"
             />
+            <ImageUp className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-brand-300" />
           </div>
-          <FieldError>{errors?.imageUrl}</FieldError>
+          <p id="photo-hint" className="mt-1 text-xs text-brand-400">
+            Formats image (JPEG, PNG, WebP…). Taille maximale : 4 Mo.
+            {editing &&
+              " Laissez ce champ vide pour conserver les photos actuelles."}
+          </p>
+          <FieldError>{errors?.imageUrl ?? errors?.photo}</FieldError>
         </div>
 
         {/* Description */}
