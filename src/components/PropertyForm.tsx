@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  ImageUp,
   Pencil,
   Plus,
 } from "lucide-react";
@@ -17,6 +16,7 @@ import {
 import { PROPERTY_TYPES, QUARTIERS } from "@/lib/constants";
 import type { Property } from "@/db/schema";
 import { useToast } from "@/components/Toast";
+import ImageUploader from "@/components/ImageUploader";
 
 function FieldError({ children }: { children?: ReactNode }) {
   if (!children) return null;
@@ -26,9 +26,14 @@ function FieldError({ children }: { children?: ReactNode }) {
 interface PropertyFormProps {
   /** Si fournie, le formulaire passe en mode « modification ». */
   property?: Property;
+  /** Photos existantes (data URL) pour l'édition. */
+  initialImages?: string[];
 }
 
-export default function PropertyForm({ property }: PropertyFormProps) {
+export default function PropertyForm({
+  property,
+  initialImages = [],
+}: PropertyFormProps) {
   const editing = Boolean(property);
   const [state, formAction, isPending] = useActionState<FormState | null, FormData>(
     editing ? updateProperty : createProperty,
@@ -225,30 +230,15 @@ export default function PropertyForm({ property }: PropertyFormProps) {
           <FieldError>{errors?.bathrooms}</FieldError>
         </div>
 
-        {/* Photo principale : sélection directe depuis la galerie ou les fichiers de l'appareil.
-            Le fichier est transmis au formulaire et enregistré avec l'annonce. */}
+        {/* Photos : sélection directe depuis la galerie ou les fichiers de
+            l'appareil (multi, compression côté client), puis enregistrement
+            avec l'annonce dans le stockage existant. */}
         <div className="sm:col-span-2">
-          <label className="field-label" htmlFor="photo">
-            Photo principale *
-          </label>
-          <div className="relative">
-            <input
-              id="photo"
-              name="photo"
-              type="file"
-              required={!editing}
-              accept="image/*"
-              className="field-input cursor-pointer pr-10 file:mr-4 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
-              aria-describedby="photo-hint"
-            />
-            <ImageUp className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-brand-300" />
-          </div>
-          <p id="photo-hint" className="mt-1 text-xs text-brand-400">
-            Formats image (JPEG, PNG, WebP…). Taille maximale : 4 Mo.
-            {editing &&
-              " Laissez ce champ vide pour conserver les photos actuelles."}
-          </p>
-          <FieldError>{errors?.imageUrl ?? errors?.photo}</FieldError>
+          <ImageUploader
+            initialImages={editing ? initialImages : []}
+            fieldName="images[]"
+            serverError={state?.imageErrors}
+          />
         </div>
 
         {/* Description */}

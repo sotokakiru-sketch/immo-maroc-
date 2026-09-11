@@ -14,6 +14,8 @@ export type FormState = {
   message: string;
   errors?: Record<string, string>;
   values?: Record<string, string>;
+  /** Erreur globale du bloc photos, affichée par l'ImageUploader. */
+  imageErrors?: string;
 };
 
 const OK_TYPES = new Set<string>(PROPERTY_TYPES);
@@ -34,35 +36,48 @@ async function requireAdmin() {
 }
 
 /**
- * Photo principale : le client sélectionne une image depuis la galerie ou les
- * fichiers de l'appareil (input type=file). Le fichier est encodé en data URL
- * base64 puis enregistré dans la table property_images — le stockage existant
- * des photos, servi ensuite via /api/images/:id. Aucune photo existante n'est
- * modifiée ni supprimée.
+ * Photos : sélectionnées sur l'appareil (galerie ou fichiers) puis compressées
+ * côté client par l'ImageUploader (data URL base64). Elles sont enregistrées
+ * dans la table property_images — le stockage existant des photos, servi
+ * ensuite via /api/images/:id. Aucune photo existante n'est modifiée ni
+ * supprimée.
  */
-const PHOTO_MAX_BYTES = 4 * 1024 * 1024; // 4 Mo après encodage (limite Server Action)
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 Mo après compression côté client
+const MAX_IMAGES = 10;
 
-async function encodePhoto(formData: FormData): Promise<string | null> {
-  const photo = formData.get("photo");
-  if (!(photo instanceof File) || photo.size === 0) return null;
-
-  if (!photo.type.startsWith("image/")) {
-    throw new ValidationError("Le fichier sélectionné n'est pas une image.");
+/** Extrait les photos envoyées (dataURL base64) et valide chacune. */
+function parseImages(formData: FormData): {
+  images: string[];
+  error?: string;
+} {
+  const raw = formData.getAll("images[]");
+  const images: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || !entry) continue;
+    if (!/^data:image\/(jpeg|jpg|png|webp);base64,/.test(entry)) {
+      return {
+        images: [],
+        error: "Format d'image invalide (JPEG/PNG/WebP attendu).",
+      };
+    }
+    // Estimation de la taille : le base64 pèse ~4/3 de la taille binaire.
+    const estimatedBytes = Math.round((entry.length * 3) / 4);
+    if (estimatedBytes > MAX_IMAGE_BYTES) {
+      return {
+        images: [],
+        error: "Une photo dépasse 5 Mo après compression.",
+      };
+    }
+    images.push(entry);
   }
-  if (photo.size > PHOTO_MAX_BYTES) {
-    throw new ValidationError("Photo trop volumineuse (4 Mo maximum).");
+  if (images.length > MAX_IMAGES) {
+    return {
+      images: [],
+      error: `Maximum ${MAX_IMAGES} photos par annonce.`,
+    };
   }
-
-  const buffer = Buffer.from(await photo.arrayBuffer());
-  const dataUrl = `data:${photo.type};base64,${buffer.toString("base64")}`;
-  if (dataUrl.length > PHOTO_MAX_BYTES) {
-    throw new ValidationError("Photo trop volumineuse (4 Mo maximum).");
-  }
-  return dataUrl;
+  return { images };
 }
-
-/** Erreur de validation de la photo, interceptée pour afficher le message. */
-class ValidationError extends Error {}
 
 /** Extrait et normalise les champs du formulaire. */
 function parseInput(formData: FormData) {
@@ -108,19 +123,40 @@ function validateInput(raw: ReturnType<typeof parseInput>) {
   return { errors, bedrooms, bathrooms, area, priceNum };
 }
 
+/** Insère les photos d'une annonce (position 0 = couverture). */
+async function insertImages(propertyId: number, images: string[]) {
+  if (images.length === 0) return;
+  const values = images.map((data, i) => ({ propertyId, position: i, data }));
+  await db.insert(propertyImages).values(values);
+}
+
 /**
- * Enregistre une photo dans property_images en position 0 (couverture).
- * Les photos existantes sont décalées d'une position, jamais modifiées ni
- * supprimées — la première reste visible dans la galerie.
+ * Ajoute uniquement les photos pas encore enregistrées (mode édition) : les
+ * photos existantes sont conservées telles quelles — aucune suppression, aucun
+ * décalage de position. Si la galerie est inchangée, aucune écriture.
  */
-async function savePhoto(propertyId: number, dataUrl: string) {
-  await db
-    .update(propertyImages)
-    .set({ position: sql`${propertyImages.position} + 1` })
+async function appendNewImages(propertyId: number, images: string[]) {
+  if (images.length === 0) return;
+
+  const existing = await db
+    .select({ data: propertyImages.data })
+    .from(propertyImages)
     .where(eq(propertyImages.propertyId, propertyId));
-  await db
-    .insert(propertyImages)
-    .values({ propertyId, position: 0, data: dataUrl });
+  const existingSet = new Set(existing.map((r) => r.data));
+  const fresh = images.filter((d) => !existingSet.has(d));
+  if (fresh.length === 0) return;
+
+  const [row] = await db
+    .select({ max: sql<number>`coalesce(max(${propertyImages.position}), -1)` })
+    .from(propertyImages)
+    .where(eq(propertyImages.propertyId, propertyId));
+  const start = (row?.max ?? -1) + 1;
+  const values = fresh.map((data, i) => ({
+    propertyId,
+    position: start + i,
+    data,
+  }));
+  await db.insert(propertyImages).values(values);
 }
 
 /** Crée une nouvelle annonce (admin uniquement). */
@@ -130,27 +166,21 @@ export async function createProperty(
 ): Promise<FormState> {
   await requireAdmin();
 
-  let photoDataUrl: string | null;
-  try {
-    photoDataUrl = await encodePhoto(formData);
-  } catch (err) {
-    if (err instanceof ValidationError) {
-      return { ok: false, message: err.message, errors: { photo: err.message } };
-    }
-    throw err;
-  }
-
   const raw = parseInput(formData);
   const { errors, bedrooms, bathrooms, area, priceNum } = validateInput(raw);
+  const { images, error: imageError } = parseImages(formData);
 
-  if (!photoDataUrl && !errors.photo) {
-    errors.photo = "Sélectionnez une photo depuis votre appareil.";
-  }
-  if (Object.keys(errors).length > 0) {
+  const photoError =
+    !imageError && images.length === 0
+      ? "Sélectionnez au moins une photo depuis votre appareil."
+      : imageError;
+
+  if (Object.keys(errors).length > 0 || photoError) {
     return {
       ok: false,
       message: "Veuillez corriger les champs en rouge.",
       errors,
+      imageErrors: photoError,
       values: raw,
     };
   }
@@ -174,9 +204,7 @@ export async function createProperty(
       })
       .returning({ id: properties.id });
 
-    if (photoDataUrl) {
-      await savePhoto(created.id, photoDataUrl);
-    }
+    await insertImages(created.id, images);
 
     revalidatePath("/");
     revalidatePath("/biens");
@@ -208,29 +236,20 @@ export async function updateProperty(
 
   const raw = parseInput(formData);
   const { errors, bedrooms, bathrooms, area, priceNum } = validateInput(raw);
+  const { images, error: imageError } = parseImages(formData);
 
-  if (Object.keys(errors).length > 0) {
+  if (Object.keys(errors).length > 0 || imageError) {
     return {
       ok: false,
       message: "Veuillez corriger les champs en rouge.",
       errors,
+      imageErrors: imageError,
       values: raw,
     };
   }
 
-  // Une nouvelle photo sélectionnée est ajoutée au stockage existant
-  // (table property_images). Sans nouvelle photo, image_url et les photos
-  // déjà enregistrées sont conservées telles quelles.
-  let photoDataUrl: string | null;
-  try {
-    photoDataUrl = await encodePhoto(formData);
-  } catch (err) {
-    if (err instanceof ValidationError) {
-      return { ok: false, message: err.message, errors: { photo: err.message } };
-    }
-    throw err;
-  }
-
+  // Sans nouvelle photo, image_url et les photos déjà enregistrées sont
+  // conservées telles quelles.
   try {
     const result = await db
       .update(properties)
@@ -253,9 +272,9 @@ export async function updateProperty(
       return { ok: false, message: "Annonce introuvable." };
     }
 
-    if (photoDataUrl) {
-      await savePhoto(id, photoDataUrl);
-    }
+    // Les photos existantes ne sont ni supprimées ni modifiées : seules les
+    // nouvelles photos (jamais enregistrées) sont ajoutées à la galerie.
+    await appendNewImages(id, images);
 
     revalidatePath("/");
     revalidatePath("/biens");

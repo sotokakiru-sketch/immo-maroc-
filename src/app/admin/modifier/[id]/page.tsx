@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Pencil, ArrowLeft } from "lucide-react";
 import PropertyForm from "@/components/PropertyForm";
-import { getPropertyById } from "@/lib/data";
+import { getPropertyById, getPropertyImages } from "@/lib/data";
 import { getSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -68,7 +68,12 @@ export default async function EditPropertyPage({
           <p className="mt-1 text-sm text-brand-500">{property.title}</p>
 
           <div className="mt-6">
-            <PropertyForm property={property} />
+            <PropertyForm
+              property={property}
+              initialImages={(await getPropertyImages(property.id)).map(
+                (i) => i.data,
+              )}
+            />
           </div>
         </div>
       </div>

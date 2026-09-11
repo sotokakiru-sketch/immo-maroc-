@@ -3,9 +3,10 @@ import {
   properties,
   propertyImages,
   type Property,
+  type PropertyImage,
   type PropertyType,
 } from "@/db/schema";
-import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { propertyImageUrl } from "@/lib/constants";
 
 export interface SearchFilters {
@@ -17,6 +18,25 @@ export interface SearchFilters {
 }
 
 export type PropertyWithGallery = Property & { galleryImageIds: number[] };
+
+/**
+ * Photos d'une annonce, triées par position (0 = couverture).
+ * Lecture seule : aucune modification du stockage existant.
+ */
+export async function getPropertyImages(
+  propertyId: number,
+): Promise<PropertyImage[]> {
+  try {
+    return await db
+      .select()
+      .from(propertyImages)
+      .where(eq(propertyImages.propertyId, propertyId))
+      .orderBy(asc(propertyImages.position));
+  } catch (err) {
+    console.error("[Immo Maroc] getPropertyImages :", err);
+    return [];
+  }
+}
 
 /**
  * Rattache à chaque annonce la liste de ses photos stockées en base
